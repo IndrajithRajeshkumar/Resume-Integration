@@ -2,41 +2,110 @@
 
 import React, { useEffect, useState } from "react";
 import { useKeycloak } from "@react-keycloak/web";
+import { useRouter } from "next/navigation";
 
-export default function Dashboard() {
+export default function HomePage() {
   const { keycloak, initialized } = useKeycloak();
-  const [ready, setReady] = useState(false);
+  const router = useRouter();
 
+  const [description, setDescription] = useState("");
+
+  // Load saved + template description
   useEffect(() => {
-    // Wait until Keycloak finishes initializing
-    if (!initialized) return;
+    const saved = localStorage.getItem("dashboardDescription");
+    if (saved) setDescription(saved);
 
-    // If initialized AND not logged in → THEN redirect
-    if (!keycloak?.authenticated) {
-      keycloak.login();
-    } else {
-      // When logged in → show page
-      setReady(true);
+    const selected = localStorage.getItem("dashboardDescription");
+    if (selected) {
+      setDescription(selected);
     }
-  }, [initialized, keycloak]);
+  }, []);
 
-  // While Keycloak loads -> show nothing
-  if (!ready) return null;
+  // Keycloak auth guard
+  useEffect(() => {
+    if (!initialized) return;
+    if (!keycloak.authenticated) {
+      keycloak.login();
+    }
+  }, [initialized, keycloak?.authenticated]);
 
-  const user = keycloak.tokenParsed || {};
+  const goToTemplates = () => router.push("/templates");
+
+  if (!initialized) return null;
+  if (!keycloak.authenticated) return null;
 
   return (
-    <div style={{ padding: "40px" }}>
-      <h1 style={{ fontSize: 28, marginBottom: 12 }}>
-        Welcome {user?.given_name || "User"} 👋
-      </h1>
+    <div style={{ display: "flex", height: "100vh" }}>
+      
+      {/* LEFT DESCRIPTION PANEL */}
+      <div
+        style={{
+          width: "320px",
+          borderRight: "1px solid #eee",
+          padding: "20px",
+          background: "#fafafa",
+        }}
+      >
+        <h3>Description</h3>
 
-      <p style={{ color: "#444" }}>
-        You are logged in using Keycloak.
-      </p>
+        <textarea
+          value={description}
+          onChange={(e) => {
+            setDescription(e.target.value);
+            localStorage.setItem("dashboardDescription", e.target.value);
+          }}
+          placeholder="Write a note…"
+          style={{
+            width: "100%",
+            height: "380px",
+            padding: "14px",
+            borderRadius: "10px",
+            border: "1px solid #ccc",
+            resize: "none",
+            background: "white",
+            marginTop: "10px",
+            marginBottom: "18px",
+            fontSize: "15px",
+            lineHeight: "1.6",
+          }}
+        />
+
+        {/* ONLY TEMPLATES BUTTON WITH RED COLOR + HOVER ANIMATION */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <button
+            onClick={goToTemplates}
+            style={{
+              padding: "10px",
+              background: "#ef4444",   // 🔥 CHANGED TO RED
+              color: "white",
+              borderRadius: "8px",
+              border: "none",
+              cursor: "pointer",
+              transition: "0.2s",
+            }}
+            onMouseEnter={(e) => (e.target.style.transform = "scale(1.05)")}
+            onMouseLeave={(e) => (e.target.style.transform = "scale(1)")}
+          >
+            Templates
+          </button>
+        </div>
+      </div>
+
+      {/* RIGHT SIDE */}
+      <div style={{ flex: 1, padding: "40px" }}>
+        <h1>Welcome {keycloak?.tokenParsed?.given_name} 👋</h1>
+        <p>You are logged in using Keycloak.</p>
+      </div>
     </div>
   );
 }
+
+
+
+
+
+
+
 
 
 

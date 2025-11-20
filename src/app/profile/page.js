@@ -1,234 +1,146 @@
 "use client";
 
-import React, { useState } from "react";
-import { useKeycloak } from "@react-keycloak/web";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useKeycloak } from "@react-keycloak/web";
 
 export default function ProfilePage() {
-  const { keycloak } = useKeycloak();
+  const { keycloak, initialized } = useKeycloak();
   const router = useRouter();
-  const user = keycloak?.tokenParsed || {};
 
-  const [profileImage, setProfileImage] = useState("/profile-icon.svg");
+  const [userInfo, setUserInfo] = useState(null);
 
-  const handleImageChange = (e) => {
-    const f = e.target.files?.[0];
-    if (f) setProfileImage(URL.createObjectURL(f));
-  };
+  useEffect(() => {
+    if (!initialized) return;
 
-  if (!keycloak?.authenticated) {
-    return (
-      <div style={centerBox}>
-        <button onClick={() => keycloak.login()} style={loginButton}>
-          Login
-        </button>
-      </div>
-    );
+    if (!keycloak.authenticated) {
+      keycloak.login();
+      return;
+    }
+
+    const token = keycloak.tokenParsed;
+
+    setUserInfo({
+      firstName: token?.given_name,
+      lastName: token?.family_name,
+      email: token?.email,
+    });
+  }, [initialized, keycloak]);
+
+  if (!initialized || !keycloak.authenticated || !userInfo) {
+    return null;
   }
 
   return (
-    <div style={pageWrap}>
-      <div style={cardContainer}>
-
-        {/* PROFILE IMAGE */}
-        <div style={imageSection}>
-          <input
-            type="file"
-            id="pf"
-            accept="image/*"
-            onChange={handleImageChange}
-            style={{ display: "none" }}
-          />
-
-          <label htmlFor="pf">
-            <img
-              src={profileImage}
-              alt="profile"
-              style={profilePic}
-            />
-          </label>
-
-          <button
-            onClick={() => document.getElementById("pf").click()}
-            style={photoButton}
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        background: "#f8fafc",
+        padding: "20px",
+      }}
+    >
+      <div
+        style={{
+          width: "480px",
+          background: "white",
+          padding: "30px",
+          borderRadius: "18px",
+          boxShadow: "0px 8px 25px rgba(0,0,0,0.08)",
+          textAlign: "center",
+        }}
+      >
+        {/* Profile Picture */}
+        <div style={{ marginBottom: "20px" }}>
+          <div
+            style={{
+              width: "120px",
+              height: "120px",
+              borderRadius: "50%",
+              background: "#e0e7ff",
+              margin: "0 auto",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "50px",
+              color: "#4f46e5",
+              fontWeight: "600",
+            }}
           >
-            Change Photo
-          </button>
-        </div>
-
-        {/* INFO SECTION */}
-        <div style={infoSection}>
-          <h2 style={title}>My Account</h2>
-
-          <Field label="First Name" value={user?.given_name} readOnly />
-          <Field label="Last Name" value={user?.family_name} readOnly />
-          <Field label="Email" value={user?.email} readOnly />
-
-          {/* BUTTON ROW */}
-          <div style={buttonRow}>
-            <button onClick={() => router.push("/")} style={backButton}>
-              ← Back
-            </button>
-
-            <button onClick={() => keycloak.logout()} style={logoutButton}>
-              Logout
-            </button>
+            {userInfo.firstName?.[0]}
           </div>
         </div>
 
+        {/* User Details */}
+        <h2
+          style={{
+            fontSize: "1.8rem",
+            fontWeight: "600",
+            marginBottom: "20px",
+            color: "#1e293b",
+          }}
+        >
+          Profile Information
+        </h2>
+
+        <div style={{ textAlign: "left", marginBottom: "25px" }}>
+          <p style={{ marginBottom: "10px", fontSize: "1rem" }}>
+            <strong>First Name:</strong> {userInfo.firstName}
+          </p>
+          <p style={{ marginBottom: "10px", fontSize: "1rem" }}>
+            <strong>Last Name:</strong> {userInfo.lastName}
+          </p>
+          <p style={{ marginBottom: "10px", fontSize: "1rem" }}>
+            <strong>Email:</strong> {userInfo.email}
+          </p>
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+          
+          {/* BACK BUTTON WITH ANIMATION */}
+          <button
+            onClick={() => router.push("/")}
+            style={{
+              padding: "10px 18px",
+              borderRadius: "8px",
+              background: "#475569",
+              color: "white",
+              border: "none",
+              cursor: "pointer",
+              transition: "0.2s",
+            }}
+            onMouseEnter={(e) => (e.target.style.transform = "scale(1.05)")}
+            onMouseLeave={(e) => (e.target.style.transform = "scale(1)")}
+          >
+            ← Back
+          </button>
+
+          {/* LOGOUT BUTTON WITH ANIMATION */}
+          <button
+            onClick={() => keycloak.logout()}
+            style={{
+              padding: "10px 18px",
+              borderRadius: "8px",
+              background: "#ef4444",
+              color: "white",
+              border: "none",
+              cursor: "pointer",
+              transition: "0.2s",
+            }}
+            onMouseEnter={(e) => (e.target.style.transform = "scale(1.05)")}
+            onMouseLeave={(e) => (e.target.style.transform = "scale(1)")}
+          >
+            Logout
+          </button>
+
+        </div>
       </div>
     </div>
   );
 }
-
-/* REUSABLE FIELD COMPONENT -------------------------------------------- */
-
-function Field({ label, value, readOnly }) {
-  return (
-    <div style={{ marginBottom: 18 }}>
-      <label style={labelStyle}>{label}</label>
-      <input value={value || ""} readOnly={readOnly} style={inputBox} />
-    </div>
-  );
-}
-
-/* STYLES ----------------------------------------------------------------*/
-
-const pageWrap = {
-  padding: "40px",
-  animation: "fadeIn 0.5s ease",
-};
-
-const cardContainer = {
-  maxWidth: "900px",
-  margin: "0 auto",
-  display: "flex",
-  gap: "40px",
-  padding: "35px",
-  background: "white",
-  borderRadius: "16px",
-  boxShadow: "0 6px 30px rgba(0,0,0,0.12)",
-  transition: "0.3s",
-};
-
-/* LEFT SIDE */
-const imageSection = {
-  width: "240px",
-  textAlign: "center",
-};
-
-const profilePic = {
-  width: "170px",
-  height: "170px",
-  borderRadius: "50%",
-  objectFit: "cover",
-  border: "4px solid #e1e1e1",
-  cursor: "pointer",
-  transition: "0.3s ease",
-};
-
-/* RIGHT SIDE */
-const infoSection = {
-  flex: 1,
-  paddingRight: "20px",
-};
-
-const title = {
-  fontSize: "28px",
-  marginBottom: "20px",
-  fontWeight: 700,
-};
-
-/* FIELD LABELS */
-const labelStyle = {
-  display: "block",
-  fontSize: "15px",
-  fontWeight: 600,
-  marginBottom: "6px",
-};
-
-const inputBox = {
-  width: "100%",
-  padding: "12px",
-  borderRadius: 10,
-  border: "1px solid #ccc",
-  background: "#f7f7f7",
-  fontSize: "15px",
-};
-
-/* BUTTON BAR */
-const buttonRow = {
-  marginTop: "20px",
-  display: "flex",
-  gap: "12px",
-};
-
-/* GLOW ANIMATIONS */
-const backButton = {
-  background: "#0078ff",
-  color: "white",
-  padding: "10px 16px",
-  borderRadius: 10,
-  border: "none",
-  cursor: "pointer",
-  fontWeight: 600,
-  transition: "0.25s ease",
-};
-
-backButton["&:hover"] = {
-  boxShadow: "0 0 12px rgba(0, 120, 255, 0.6)",
-};
-
-const logoutButton = {
-  background: "#e63946",
-  color: "white",
-  padding: "10px 16px",
-  borderRadius: 10,
-  border: "none",
-  cursor: "pointer",
-  fontWeight: 600,
-  transition: "0.25s ease",
-};
-
-logoutButton["&:hover"] = {
-  boxShadow: "0 0 12px rgba(230, 57, 70, 0.6)",
-};
-
-const photoButton = {
-  marginTop: "15px",
-  background: "#0078ff",
-  color: "white",
-  padding: "10px 16px",
-  borderRadius: 10,
-  border: "none",
-  cursor: "pointer",
-  fontWeight: 600,
-  transition: "0.25s ease",
-};
-
-photoButton["&:hover"] = {
-  boxShadow: "0 0 12px rgba(0, 120, 255, 0.6)",
-};
-
-/* LOGIN CENTER BOX */
-const loginButton = {
-  background: "#0078ff",
-  color: "white",
-  padding: "12px 20px",
-  borderRadius: 10,
-  border: "none",
-  cursor: "pointer",
-  fontWeight: 600,
-  transition: "0.25s ease",
-};
-
-const centerBox = {
-  height: "80vh",
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-};
-
 
 
 
