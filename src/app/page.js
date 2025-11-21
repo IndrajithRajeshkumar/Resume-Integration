@@ -31,6 +31,15 @@ export default function HomePage() {
 
   const goToTemplates = () => router.push("/templates");
 
+  // 🚀 MAKE TEMPLATE BUTTON LOGIC
+  const handleMakeTemplate = () => {
+    // Store only the description
+    localStorage.setItem("makeTemplateDescription", description);
+
+    // Navigate to templates page
+    router.push("/templates");
+  };
+
   if (!initialized) return null;
   if (!keycloak.authenticated) return null;
 
@@ -70,13 +79,15 @@ export default function HomePage() {
           }}
         />
 
-        {/* ONLY TEMPLATES BUTTON WITH RED COLOR + HOVER ANIMATION */}
+        {/* BUTTONS */}
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          
+          {/* Templates Button (Red) */}
           <button
             onClick={goToTemplates}
             style={{
               padding: "10px",
-              background: "#ef4444",   // 🔥 CHANGED TO RED
+              background: "#ef4444",
               color: "white",
               borderRadius: "8px",
               border: "none",
@@ -88,6 +99,26 @@ export default function HomePage() {
           >
             Templates
           </button>
+
+          {/* Make Template Button (Blue/Green) — Only if description exists */}
+          {description.trim().length > 0 && (
+            <button
+              onClick={handleMakeTemplate}
+              style={{
+                padding: "10px",
+                background: "#3b82f6",  // Blue standout button
+                color: "white",
+                borderRadius: "8px",
+                border: "none",
+                cursor: "pointer",
+                transition: "0.2s",
+              }}
+              onMouseEnter={(e) => (e.target.style.transform = "scale(1.05)")}
+              onMouseLeave={(e) => (e.target.style.transform = "scale(1)")}
+            >
+              Make Template
+            </button>
+          )}
         </div>
       </div>
 
@@ -99,6 +130,7 @@ export default function HomePage() {
     </div>
   );
 }
+
 
 
 
