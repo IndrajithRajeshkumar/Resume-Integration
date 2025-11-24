@@ -11,15 +11,22 @@ export default function TemplatesPage() {
   const [filter, setFilter] = useState("All");
   const [showCategories, setShowCategories] = useState(false);
 
-  // Modal states
+  // Modals
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  // Add/Edit modal fields
+  // Edit/Delete tracking
   const [modalId, setModalId] = useState(null);
+  const [deleteId, setDeleteId] = useState(null);
+
+  // Modal inputs
   const [modalTitle, setModalTitle] = useState("");
   const [modalCategory, setModalCategory] = useState("Technical");
   const [modalDescription, setModalDescription] = useState("");
+
+  // Validation state
+  const [validationError, setValidationError] = useState("");
 
   // Load templates
   useEffect(() => {
@@ -32,43 +39,58 @@ export default function TemplatesPage() {
     setTemplates(updated);
   };
 
-  // DELETE template
+  // DELETE POPUP
   const deleteCard = (id) => {
-    if (confirm("Delete this template?")) {
-      saveToStorage(templates.filter((t) => t.id !== id));
-    }
+    setDeleteId(id);
+    setShowDeleteModal(true);
   };
 
-  // USE template -> fill dashboard
-  const useTemplate = (desc) => {
-    localStorage.setItem("dashboardDescription", desc);
+  const confirmDelete = () => {
+    const updated = templates.filter((t) => t.id !== deleteId);
+    saveToStorage(updated);
+    setShowDeleteModal(false);
+    setDeleteId(null);
+  };
+
+  // USE TEMPLATE
+  const useTemplate = (text) => {
+    localStorage.setItem("dashboardDescription", text);
     router.push("/");
   };
 
-  // OPEN Add Modal
+  // OPEN ADD MODAL
   const openAddModal = () => {
     setModalId(null);
     setModalTitle("");
     setModalCategory("Technical");
     setModalDescription("");
+    setValidationError("");
     setShowAddModal(true);
   };
 
-  // OPEN Edit Modal
-  const openEditModal = (template) => {
-    setModalId(template.id);
-    setModalTitle(template.title);
-    setModalCategory(template.category);
-    setModalDescription(template.description);
+  // OPEN EDIT MODAL
+  const openEditModal = (t) => {
+    setModalId(t.id);
+    setModalTitle(t.title);
+    setModalCategory(t.category);
+    setModalDescription(t.description);
+    setValidationError("");
     setShowEditModal(true);
+  };
+
+  // VALIDATION FUNCTION
+  const validateFields = () => {
+    if (!modalTitle.trim() || !modalCategory.trim() || !modalDescription.trim()) {
+      setValidationError("⚠ Please fill all required fields.");
+      return false;
+    }
+    setValidationError("");
+    return true;
   };
 
   // SAVE NEW TEMPLATE
   const saveNewTemplate = () => {
-    if (!modalTitle.trim()) {
-      alert("Please enter a job title");
-      return;
-    }
+    if (!validateFields()) return;
 
     const newTemplate = {
       id: Date.now().toString(),
@@ -81,8 +103,10 @@ export default function TemplatesPage() {
     setShowAddModal(false);
   };
 
-  // SAVE EDITED TEMPLATE
+  // SAVE EDIT
   const saveEditedTemplate = () => {
+    if (!validateFields()) return;
+
     const updated = templates.map((t) =>
       t.id === modalId
         ? {
@@ -98,31 +122,28 @@ export default function TemplatesPage() {
     setShowEditModal(false);
   };
 
-  // FILTER list
+  // FILTER
   const filtered = templates.filter((t) => {
-    const matchesSearch =
+    const searchMatch =
       t.title.toLowerCase().includes(search.toLowerCase()) ||
       t.description.toLowerCase().includes(search.toLowerCase());
 
-    const matchesFilter = filter === "All" ? true : t.category === filter;
+    const categoryMatch = filter === "All" ? true : t.category === filter;
 
-    return matchesSearch && matchesFilter;
+    return searchMatch && categoryMatch;
   });
 
-  // ⭐ AUTO-OPEN ADD TEMPLATE MODAL WHEN "MAKE TEMPLATE" WAS CLICKED ⭐
+  // AUTO-OPEN ADD TEMPLATE MODAL (Make Template)
   useEffect(() => {
     const desc = localStorage.getItem("makeTemplateDescription");
     if (desc) {
-      // prefill description ONLY
       setModalId(null);
       setModalTitle("");
       setModalCategory("Technical");
       setModalDescription(desc);
-
-      // open modal
+      setValidationError("");
       setShowAddModal(true);
 
-      // remove flag so it doesn't reopen
       localStorage.removeItem("makeTemplateDescription");
     }
   }, []);
@@ -131,7 +152,7 @@ export default function TemplatesPage() {
     <div style={{ padding: 28 }}>
       <h1 style={{ marginBottom: 20 }}>Templates</h1>
 
-      {/* Search + Category + Add */}
+      {/* SEARCH + CATEGORIES + ADD */}
       <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
         <input
           value={search}
@@ -165,12 +186,12 @@ export default function TemplatesPage() {
                 position: "absolute",
                 top: 45,
                 left: 0,
+                width: 150,
                 background: "white",
-                border: "1px solid #ccc",
+                border: "1px solid #ddd",
                 borderRadius: 8,
                 boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
                 zIndex: 50,
-                width: 150,
               }}
             >
               {["All", "Technical", "Non-Technical"].map((cat) => (
@@ -210,11 +231,11 @@ export default function TemplatesPage() {
         </button>
       </div>
 
-      {/* CARDS */}
+      {/* CARD GRID */}
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(350px,1fr))",
+          gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))",
           gap: 20,
         }}
       >
@@ -235,9 +256,8 @@ export default function TemplatesPage() {
               if (
                 e.target.dataset.btn === "delete" ||
                 e.target.dataset.btn === "use"
-              ) {
+              )
                 return;
-              }
               openEditModal(t);
             }}
             onMouseEnter={(e) => {
@@ -265,6 +285,7 @@ export default function TemplatesPage() {
               </div>
             </div>
 
+            {/* PREVIEW */}
             <div
               style={{
                 maxHeight: 40,
@@ -279,6 +300,7 @@ export default function TemplatesPage() {
               {t.description}
             </div>
 
+            {/* BUTTONS */}
             <div style={{ display: "flex", gap: 10 }}>
               <button
                 data-btn="use"
@@ -316,7 +338,9 @@ export default function TemplatesPage() {
         ))}
       </div>
 
-      {/* OVERLAY + ADD MODAL */}
+      {/* ========================= */}
+      {/* ADD TEMPLATE MODAL */}
+      {/* ========================= */}
       {showAddModal && (
         <div
           style={{
@@ -383,6 +407,19 @@ export default function TemplatesPage() {
                 }}
               />
 
+              {/* ⭐ VALIDATION MESSAGE */}
+              {validationError && (
+                <div
+                  style={{
+                    color: "#dc2626",
+                    fontSize: "14px",
+                    marginTop: "-4px",
+                  }}
+                >
+                  {validationError}
+                </div>
+              )}
+
               <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
                 <button
                   onClick={saveNewTemplate}
@@ -419,7 +456,9 @@ export default function TemplatesPage() {
         </div>
       )}
 
-      {/* OVERLAY + EDIT MODAL */}
+      {/* ========================= */}
+      {/* EDIT TEMPLATE MODAL */}
+      {/* ========================= */}
       {showEditModal && (
         <div
           style={{
@@ -486,6 +525,19 @@ export default function TemplatesPage() {
                 }}
               />
 
+              {/* ⭐ VALIDATION MESSAGE */}
+              {validationError && (
+                <div
+                  style={{
+                    color: "#dc2626",
+                    fontSize: "14px",
+                    marginTop: "-4px",
+                  }}
+                >
+                  {validationError}
+                </div>
+              )}
+
               <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
                 <button
                   onClick={saveEditedTemplate}
@@ -517,6 +569,80 @@ export default function TemplatesPage() {
                   Cancel
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================ */}
+      {/* DELETE CONFIRMATION MODAL */}
+      {/* ============================ */}
+      {showDeleteModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100vw",
+            height: "100vh",
+            background: "rgba(0,0,0,0.15)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 300,
+          }}
+        >
+          <div
+            style={{
+              width: "380px",
+              background: "white",
+              padding: "26px",
+              borderRadius: "16px",
+              boxShadow: "0 8px 22px rgba(0,0,0,0.15)",
+              textAlign: "center",
+            }}
+          >
+            <h3 style={{ marginBottom: 12 }}>Are you sure?</h3>
+            <p style={{ marginBottom: 22, color: "#555" }}>
+              Do you really want to delete this template?
+            </p>
+
+            <div style={{ display: "flex", gap: 12 }}>
+              <button
+                onClick={confirmDelete}
+                style={{
+                  flex: 1,
+                  padding: "10px",
+                  background: "#ef4444",
+                  borderRadius: "8px",
+                  color: "white",
+                  border: "none",
+                  cursor: "pointer",
+                  transition: "0.2s",
+                }}
+                onMouseEnter={(e) => (e.target.style.transform = "scale(1.05)")}
+                onMouseLeave={(e) => (e.target.style.transform = "scale(1)")}
+              >
+                Delete
+              </button>
+
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                style={{
+                  flex: 1,
+                  padding: "10px",
+                  background: "#94a3b8",
+                  borderRadius: "8px",
+                  color: "white",
+                  border: "none",
+                  cursor: "pointer",
+                  transition: "0.2s",
+                }}
+                onMouseEnter={(e) => (e.target.style.transform = "scale(1.05)")}
+                onMouseLeave={(e) => (e.target.style.transform = "scale(1)")}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
