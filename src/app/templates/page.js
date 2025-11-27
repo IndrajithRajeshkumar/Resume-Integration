@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 export default function TemplatesPage() {
@@ -8,79 +8,109 @@ export default function TemplatesPage() {
 
   const [templates, setTemplates] = useState([]);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("All");
-  const [showCategories, setShowCategories] = useState(false);
+  const [filterLabel, setFilterLabel] = useState("All");
 
-  // Modals
+  const [labels, setLabels] = useState([]);
+  const [showLabelsDropdown, setShowLabelsDropdown] = useState(false);
+  const [showAddLabelModal, setShowAddLabelModal] = useState(false);
+  const [newLabelInput, setNewLabelInput] = useState("");
+  const [labelSearch, setLabelSearch] = useState("");
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  // Edit/Delete tracking
   const [modalId, setModalId] = useState(null);
   const [deleteId, setDeleteId] = useState(null);
 
-  // Modal inputs
   const [modalTitle, setModalTitle] = useState("");
-  const [modalCategory, setModalCategory] = useState("Technical");
   const [modalDescription, setModalDescription] = useState("");
+  const [modalLabelsSelected, setModalLabelsSelected] = useState([]);
 
-  // Validation state
   const [validationError, setValidationError] = useState("");
 
-  // Load templates
+  // card-level label dropdown open state
+  const [openCardLabelId, setOpenCardLabelId] = useState(null);
+
+  // refs for click outside closing
+  const labelsDropdownRef = useRef(null);
+  const cardLabelRef = useRef(null);
+
+  // load persisted data
   useEffect(() => {
     const saved = localStorage.getItem("templates");
-    if (saved) setTemplates(JSON.parse(saved));
+    if (saved) {
+      try {
+        setTemplates(JSON.parse(saved));
+      } catch {
+        setTemplates([]);
+      }
+    }
+
+    const savedLabels = localStorage.getItem("labels");
+    if (savedLabels) {
+      try {
+        setLabels(JSON.parse(savedLabels));
+      } catch {
+        setLabels([]);
+      }
+    }
   }, []);
 
-  const saveToStorage = (updated) => {
+  const saveTemplatesToStorage = (updated) => {
     localStorage.setItem("templates", JSON.stringify(updated));
     setTemplates(updated);
   };
 
-  // DELETE POPUP
-  const deleteCard = (id) => {
-    setDeleteId(id);
-    setShowDeleteModal(true);
+  const saveLabelsToStorage = (updated) => {
+    localStorage.setItem("labels", JSON.stringify(updated));
+    setLabels(updated);
   };
 
-  const confirmDelete = () => {
-    const updated = templates.filter((t) => t.id !== deleteId);
-    saveToStorage(updated);
-    setShowDeleteModal(false);
-    setDeleteId(null);
+  // label helpers
+  const addLabel = (labelName) => {
+    const trimmed = String(labelName || "").trim();
+    if (!trimmed) return false;
+    if (labels.includes(trimmed)) return false;
+    const updated = [trimmed, ...labels];
+    saveLabelsToStorage(updated);
+    return true;
   };
 
-  // USE TEMPLATE
-  const useTemplate = (text) => {
-    localStorage.setItem("dashboardDescription", text);
-    router.push("/");
+  const removeLabelFromStore = (labelName) => {
+    const updated = labels.filter((l) => l !== labelName);
+    saveLabelsToStorage(updated);
+
+    // remove from templates too
+    const updatedTemplates = templates.map((t) =>
+      Array.isArray(t.labels) && t.labels.includes(labelName)
+        ? { ...t, labels: t.labels.filter((l) => l !== labelName) }
+        : t
+    );
+    saveTemplatesToStorage(updatedTemplates);
   };
 
-  // OPEN ADD MODAL
+  // template flows
   const openAddModal = () => {
     setModalId(null);
     setModalTitle("");
-    setModalCategory("Technical");
     setModalDescription("");
+    setModalLabelsSelected([]);
     setValidationError("");
     setShowAddModal(true);
   };
 
-  // OPEN EDIT MODAL
   const openEditModal = (t) => {
     setModalId(t.id);
-    setModalTitle(t.title);
-    setModalCategory(t.category);
-    setModalDescription(t.description);
+    setModalTitle(t.title || "");
+    setModalDescription(t.description || "");
+    setModalLabelsSelected(Array.isArray(t.labels) ? [...t.labels] : []);
     setValidationError("");
     setShowEditModal(true);
   };
 
-  // VALIDATION FUNCTION
   const validateFields = () => {
-    if (!modalTitle.trim() || !modalCategory.trim() || !modalDescription.trim()) {
+    if (!modalTitle.trim() || !modalDescription.trim()) {
       setValidationError("⚠ Please fill all required fields.");
       return false;
     }
@@ -88,129 +118,263 @@ export default function TemplatesPage() {
     return true;
   };
 
-  // SAVE NEW TEMPLATE
   const saveNewTemplate = () => {
     if (!validateFields()) return;
-
     const newTemplate = {
       id: Date.now().toString(),
       title: modalTitle,
-      category: modalCategory,
       description: modalDescription,
+      labels: modalLabelsSelected.length ? [...modalLabelsSelected] : [],
     };
-
-    saveToStorage([newTemplate, ...templates]);
+    saveTemplatesToStorage([newTemplate, ...templates]);
     setShowAddModal(false);
   };
 
-  // SAVE EDIT
   const saveEditedTemplate = () => {
     if (!validateFields()) return;
-
     const updated = templates.map((t) =>
       t.id === modalId
-        ? {
-            ...t,
-            title: modalTitle,
-            category: modalCategory,
-            description: modalDescription,
-          }
+        ? { ...t, title: modalTitle, description: modalDescription, labels: modalLabelsSelected }
         : t
     );
-
-    saveToStorage(updated);
+    saveTemplatesToStorage(updated);
     setShowEditModal(false);
   };
 
-  // FILTER
+  const deleteCard = (id) => {
+    setDeleteId(id);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = () => {
+    saveTemplatesToStorage(templates.filter((t) => t.id !== deleteId));
+    setShowDeleteModal(false);
+    setDeleteId(null);
+  };
+
+  const useTemplate = (text) => {
+    localStorage.setItem("dashboardDescription", text);
+    router.push("/");
+  };
+
+  // search + label filter
   const filtered = templates.filter((t) => {
     const searchMatch =
-      t.title.toLowerCase().includes(search.toLowerCase()) ||
-      t.description.toLowerCase().includes(search.toLowerCase());
-
-    const categoryMatch = filter === "All" ? true : t.category === filter;
-
-    return searchMatch && categoryMatch;
+      (t.title || "").toLowerCase().includes(search.toLowerCase()) ||
+      (t.description || "").toLowerCase().includes(search.toLowerCase());
+    const labelMatch = filterLabel === "All" ? true : Array.isArray(t.labels) && t.labels.includes(filterLabel);
+    return searchMatch && labelMatch;
   });
 
-  // AUTO-OPEN ADD TEMPLATE MODAL (Make Template)
+  // auto-open "make template" flow
   useEffect(() => {
     const desc = localStorage.getItem("makeTemplateDescription");
     if (desc) {
       setModalId(null);
       setModalTitle("");
-      setModalCategory("Technical");
       setModalDescription(desc);
+      setModalLabelsSelected([]);
       setValidationError("");
       setShowAddModal(true);
-
       localStorage.removeItem("makeTemplateDescription");
     }
   }, []);
 
+  // card-level label dropdown
+  const toggleCardLabelDropdown = (cardId) => {
+    // when opening a card dropdown, close templates dropdown
+    setShowLabelsDropdown(false);
+    setOpenCardLabelId((prev) => (prev === cardId ? null : cardId));
+  };
+
+  const addLabelToCard = (cardId, labelName) => {
+    if (!labels.includes(labelName)) return;
+    const updated = templates.map((t) =>
+      t.id === cardId
+        ? {
+            ...t,
+            labels: Array.isArray(t.labels)
+              ? t.labels.includes(labelName)
+                ? t.labels
+                : [...t.labels, labelName]
+              : [labelName],
+          }
+        : t
+    );
+    saveTemplatesToStorage(updated);
+    setOpenCardLabelId(null);
+  };
+
+  const labelsAvailableForCard = (card) => {
+    const used = Array.isArray(card.labels) ? card.labels : [];
+    return labels.filter((l) => !used.includes(l));
+  };
+
+  // click outside to close dropdowns: central handler
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (labelsDropdownRef.current && !labelsDropdownRef.current.contains(e.target)) {
+        setShowLabelsDropdown(false);
+      }
+      // cardLabelRef is shared but we only close card dropdown when clicking outside any open card dropdown
+      // so if click is not inside any element with data-role="card-label-area", close card dropdown
+      const cardArea = document.querySelector('[data-role="card-label-area"]');
+      if (openCardLabelId && !e.target.closest('[data-card-label-id]')) {
+        setOpenCardLabelId(null);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [openCardLabelId]);
+
+  // filtered labels for the templates dropdown search
+  const filteredLabels = labels
+    .filter((lab) => typeof lab === "string")
+    .filter((lab) => lab.toLowerCase().includes(labelSearch.toLowerCase()));
+
+  // --- Component render ---
   return (
     <div style={{ padding: 28 }}>
       <h1 style={{ marginBottom: 20 }}>Templates</h1>
 
-      {/* SEARCH + CATEGORIES + ADD */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
+      {/* top controls */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 20, alignItems: "center" }}>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search templates..."
-          style={{
-            padding: 10,
-            borderRadius: 8,
-            border: "1px solid #ddd",
-            width: 260,
-          }}
+          style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd", width: 260 }}
         />
 
-        <div style={{ position: "relative" }}>
+        {/* Labels dropdown (templates page) */}
+        <div style={{ position: "relative" }} ref={labelsDropdownRef}>
           <button
-            onClick={() => setShowCategories(!showCategories)}
+            onClick={() => {
+              setOpenCardLabelId(null);
+              setShowLabelsDropdown((s) => !s);
+            }}
             style={{
-              padding: "10px 16px",
+              padding: "10px 14px",
               borderRadius: 8,
               border: "1px solid #ddd",
               background: "white",
               cursor: "pointer",
             }}
           >
-            Categories ▼
+            Labels ▼
           </button>
 
-          {showCategories && (
+          {showLabelsDropdown && (
             <div
               style={{
                 position: "absolute",
-                top: 45,
+                top: 48,
                 left: 0,
-                width: 150,
+                width: 260,
                 background: "white",
                 border: "1px solid #ddd",
-                borderRadius: 8,
-                boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                zIndex: 50,
+                borderRadius: 10,
+                boxShadow: "0 6px 18px rgba(0,0,0,0.08)",
+                padding: 10,
+                zIndex: 300,
+                maxHeight: 320,
+                overflow: "hidden",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
               }}
+              onClick={(e) => e.stopPropagation()}
             >
-              {["All", "Technical", "Non-Technical"].map((cat) => (
-                <div
-                  key={cat}
-                  onClick={() => {
-                    setFilter(cat);
-                    setShowCategories(false);
-                  }}
-                  style={{
-                    padding: 10,
-                    borderBottom:
-                      cat !== "Non-Technical" ? "1px solid #eee" : "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  {cat}
-                </div>
-              ))}
+              <input
+                value={labelSearch}
+                onChange={(e) => setLabelSearch(e.target.value)}
+                placeholder="Search labels..."
+                style={{ width: "100%", padding: 8, border: "1px solid #ddd", borderRadius: 8 }}
+              />
+
+              <div
+                onClick={() => {
+                  setFilterLabel("All");
+                  setShowLabelsDropdown(false);
+                }}
+                style={{
+                  padding: 8,
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  background: filterLabel === "All" ? "#f3f4f6" : "white",
+                }}
+              >
+                All
+              </div>
+
+              <div style={{ overflowY: "auto", maxHeight: 180, paddingRight: 4 }}>
+                {filteredLabels.map((lab) => (
+                  <div
+                    key={lab}
+                    style={{
+                      padding: 8,
+                      marginTop: 6,
+                      borderRadius: 6,
+                      cursor: "pointer",
+                      background: filterLabel === lab ? "#f3f4f6" : "white",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div
+                      onClick={() => {
+                        setFilterLabel(lab);
+                        setShowLabelsDropdown(false);
+                      }}
+                      style={{ flex: 1 }}
+                    >
+                      {lab}
+                    </div>
+
+                    {/* remove icon inside the templates dropdown (per your request) */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // confirm removal quickly
+                        if (confirm(`Remove label "${lab}" from store and all templates?`)) {
+                          removeLabelFromStore(lab);
+                        }
+                      }}
+                      title="Remove label"
+                      style={{
+                        marginLeft: 8,
+                        background: "transparent",
+                        border: "none",
+                        color: "#ef4444",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={() => {
+                  setShowAddLabelModal(true);
+                  setShowLabelsDropdown(false);
+                  setNewLabelInput("");
+                }}
+                style={{
+                  width: "100%",
+                  marginTop: 6,
+                  padding: 8,
+                  borderRadius: 8,
+                  border: "1px solid #ddd",
+                  background: "white",
+                  cursor: "pointer",
+                }}
+              >
+                + Add new label
+              </button>
             </div>
           )}
         </div>
@@ -231,14 +395,8 @@ export default function TemplatesPage() {
         </button>
       </div>
 
-      {/* CARD GRID */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))",
-          gap: 20,
-        }}
-      >
+      {/* card grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", gap: 20 }}>
         {filtered.map((t) => (
           <div
             key={t.id}
@@ -246,69 +404,173 @@ export default function TemplatesPage() {
               background: "white",
               padding: 20,
               borderRadius: 14,
-              boxShadow: "0 4px 10px rgba(0,0,0,0.08)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-              transition: "0.2s",
-            }}
-            onClick={(e) => {
-              if (
-                e.target.dataset.btn === "delete" ||
-                e.target.dataset.btn === "use"
-              )
-                return;
-              openEditModal(t);
+              boxShadow: "0 6px 18px rgba(0,0,0,0.08)",
+              position: "relative",
+              transition: "transform 0.18s ease, box-shadow 0.18s ease",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "scale(1.02)";
-              e.currentTarget.style.boxShadow =
-                "0 8px 20px rgba(0,0,0,0.12)";
+              e.currentTarget.style.transform = "translateY(-3px)";
+              e.currentTarget.style.boxShadow = "0 12px 30px rgba(0,0,0,0.12)";
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "scale(1)";
-              e.currentTarget.style.boxShadow =
-                "0 4px 10px rgba(0,0,0,0.08)";
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "0 6px 18px rgba(0,0,0,0.08)";
+            }}
+            onClick={(e) => {
+              const btn = e.target.dataset.btn;
+              const role = e.target.dataset.role;
+              if (btn === "use" || btn === "delete" || role === "card-label" || role === "card-label-item") return;
+              openEditModal(t);
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <div style={{ fontWeight: 600 }}>{t.title}</div>
-              <div
-                style={{
-                  background: "#f1f5f9",
-                  padding: "6px 10px",
-                  borderRadius: 8,
-                  fontSize: 12,
-                }}
-              >
-                {t.category}
+            {/* label chips (top-right) */}
+            <div
+              style={{
+                position: "absolute",
+                top: 12,
+                right: 12,
+                display: "flex",
+                gap: 6,
+                flexWrap: "wrap",
+                // ensure chip area doesn't overlap title (adds spacing)
+                maxWidth: 200,
+              }}
+            >
+              {(Array.isArray(t.labels) ? t.labels : []).map((lab) => (
+                <div
+                  key={lab}
+                  style={{
+                    background: "#f1f5f9",
+                    padding: "4px 8px",
+                    borderRadius: 999,
+                    fontSize: 12,
+                    color: "#0f172a",
+                    maxWidth: 120,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                  title={lab}
+                >
+                  {lab}
+                </div>
+              ))}
+            </div>
+
+            {/* spacing to avoid overlap with title */}
+            <div style={{ height: (t.labels?.length || 0) > 0 ? 34 : 6 }} />
+
+            {/* title + small + button */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={{ fontWeight: 700, fontSize: 16 }}>{t.title || "Untitled"}</div>
+
+              {/* card label area - note data attributes used by document click handler */}
+              <div data-card-label-id={t.id} style={{ position: "relative" }} data-role="card-label-area" ref={cardLabelRef}>
+                <button
+                  data-role="card-label"
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    toggleCardLabelDropdown(t.id);
+                  }}
+                  title="Add label"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    border: "1px solid #ddd",
+                    background: "white",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    fontSize: 18,
+                    color: "#374151",
+                  }}
+                >
+                  +
+                </button>
+
+                {/* small dropdown for card labels (reduced size + scrollbar) */}
+                {openCardLabelId === t.id && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 40,
+                      right: 0,
+                      width: 160, // reduced width as requested
+                      maxHeight: 180,
+                      overflowY: "auto", // scrollbar
+                      background: "white",
+                      border: "1px solid #ddd",
+                      borderRadius: 10,
+                      padding: 8,
+                      boxShadow: "0 8px 20px rgba(0,0,0,0.12)",
+                      zIndex: 400,
+                    }}
+                    onClick={(ev) => ev.stopPropagation()}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>Add label</div>
+
+                    {labelsAvailableForCard(t).length > 0 ? (
+                      labelsAvailableForCard(t).map((lab) => (
+                        <div
+                          key={lab}
+                          data-role="card-label-item"
+                          onClick={() => addLabelToCard(t.id, lab)}
+                          style={{
+                            padding: "6px 8px",
+                            borderRadius: 6,
+                            cursor: "pointer",
+                            fontSize: 14,
+                          }}
+                        >
+                          {lab}
+                        </div>
+                      ))
+                    ) : (
+                      <div style={{ color: "#6b7280", padding: 6 }}>No labels available</div>
+                    )}
+
+                    <div style={{ height: 6 }} />
+                    <button
+                      onClick={() => {
+                        setShowAddLabelModal(true);
+                        setOpenCardLabelId(null);
+                        setNewLabelInput("");
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: 8,
+                        borderRadius: 8,
+                        border: "1px solid #ddd",
+                        background: "white",
+                        cursor: "pointer",
+                      }}
+                    >
+                      + Add label
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* PREVIEW */}
-            <div
-              style={{
-                maxHeight: 40,
-                overflow: "hidden",
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                fontSize: 14,
-                color: "#444",
-              }}
-            >
-              {t.description}
+            {/* description */}
+            <div style={{ marginTop: 10, maxHeight: 64, overflow: "hidden", color: "#374151", fontSize: 14 }}>
+              {t.description || ""}
             </div>
 
-            {/* BUTTONS */}
-            <div style={{ display: "flex", gap: 10 }}>
+            {/* actions */}
+            <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
               <button
                 data-btn="use"
-                onClick={() => useTemplate(t.description)}
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  useTemplate(t.description || "");
+                }}
                 style={{
                   flex: 1,
-                  padding: "8px 12px",
-                  borderRadius: 8,
+                  padding: "9px 12px",
+                  borderRadius: 10,
                   border: "none",
                   background: "#6b46c1",
                   color: "white",
@@ -320,11 +582,14 @@ export default function TemplatesPage() {
 
               <button
                 data-btn="delete"
-                onClick={() => deleteCard(t.id)}
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  deleteCard(t.id);
+                }}
                 style={{
                   flex: 1,
-                  padding: "8px 12px",
-                  borderRadius: 8,
+                  padding: "9px 12px",
+                  borderRadius: 10,
                   border: "none",
                   background: "#ef4444",
                   color: "white",
@@ -338,9 +603,7 @@ export default function TemplatesPage() {
         ))}
       </div>
 
-      {/* ========================= */}
-      {/* ADD TEMPLATE MODAL */}
-      {/* ========================= */}
+      {/* Add Template Modal */}
       {showAddModal && (
         <div
           style={{
@@ -353,101 +616,36 @@ export default function TemplatesPage() {
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
-            zIndex: 200,
+            zIndex: 600,
           }}
+          onClick={() => setShowAddModal(false)}
         >
           <div
+            onClick={(e) => e.stopPropagation()}
             style={{
-              width: "480px",
+              width: 520,
               background: "white",
-              padding: "30px",
-              borderRadius: "18px",
-              boxShadow: "0px 8px 25px rgba(0,0,0,0.12)",
+              padding: 24,
+              borderRadius: 12,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.12)",
             }}
           >
-            <h2 style={{ textAlign: "center", marginBottom: 20 }}>
-              Add Template
-            </h2>
+            <h2 style={{ textAlign: "center", marginBottom: 12 }}>Add Template</h2>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <label>Job Title</label>
-              <input
-                value={modalTitle}
-                onChange={(e) => setModalTitle(e.target.value)}
-                style={{
-                  padding: 12,
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                }}
-              />
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <label style={{ fontWeight: 600 }}>Job Title</label>
+              <input value={modalTitle} onChange={(e) => setModalTitle(e.target.value)} style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd", width: "100%" }} />
 
-              <label>Category</label>
-              <select
-                value={modalCategory}
-                onChange={(e) => setModalCategory(e.target.value)}
-                style={{
-                  padding: 12,
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                }}
-              >
-                <option>Technical</option>
-                <option>Non-Technical</option>
-              </select>
+              <label style={{ fontWeight: 600 }}>Description</label>
+              <textarea value={modalDescription} onChange={(e) => setModalDescription(e.target.value)} style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd", width: "100%", minHeight: 140 }} />
 
-              <label>Description</label>
-              <textarea
-                value={modalDescription}
-                onChange={(e) => setModalDescription(e.target.value)}
-                style={{
-                  padding: 12,
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                  minHeight: 140,
-                }}
-              />
+              {validationError && <div style={{ color: "#dc2626" }}>{validationError}</div>}
 
-              {/* ⭐ VALIDATION MESSAGE */}
-              {validationError && (
-                <div
-                  style={{
-                    color: "#dc2626",
-                    fontSize: "14px",
-                    marginTop: "-4px",
-                  }}
-                >
-                  {validationError}
-                </div>
-              )}
-
-              <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
-                <button
-                  onClick={saveNewTemplate}
-                  style={{
-                    flex: 1,
-                    padding: "12px 16px",
-                    borderRadius: 10,
-                    background: "#10b981",
-                    border: "none",
-                    color: "white",
-                    cursor: "pointer",
-                  }}
-                >
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={saveNewTemplate} style={{ flex: 1, padding: 12, borderRadius: 8, background: "#10b981", color: "white", border: "none" }}>
                   Save
                 </button>
-
-                <button
-                  onClick={() => setShowAddModal(false)}
-                  style={{
-                    flex: 1,
-                    padding: "12px 16px",
-                    borderRadius: 10,
-                    background: "#94a3b8",
-                    border: "none",
-                    color: "white",
-                    cursor: "pointer",
-                  }}
-                >
+                <button onClick={() => setShowAddModal(false)} style={{ flex: 1, padding: 12, borderRadius: 8, background: "#94a3b8", color: "white", border: "none" }}>
                   Cancel
                 </button>
               </div>
@@ -456,9 +654,7 @@ export default function TemplatesPage() {
         </div>
       )}
 
-      {/* ========================= */}
-      {/* EDIT TEMPLATE MODAL */}
-      {/* ========================= */}
+      {/* Edit Template Modal */}
       {showEditModal && (
         <div
           style={{
@@ -471,101 +667,49 @@ export default function TemplatesPage() {
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
-            zIndex: 200,
+            zIndex: 600,
           }}
+          onClick={() => setShowEditModal(false)}
         >
           <div
+            onClick={(e) => e.stopPropagation()}
             style={{
-              width: "480px",
+              width: 520,
               background: "white",
-              padding: "30px",
-              borderRadius: "18px",
-              boxShadow: "0px 8px 25px rgba(0,0,0,0.12)",
+              padding: 24,
+              borderRadius: 12,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.12)",
             }}
           >
-            <h2 style={{ textAlign: "center", marginBottom: 20 }}>
-              Edit Template
-            </h2>
+            <h2 style={{ textAlign: "center", marginBottom: 12 }}>Edit Template</h2>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <label>Job Title</label>
-              <input
-                value={modalTitle}
-                onChange={(e) => setModalTitle(e.target.value)}
-                style={{
-                  padding: 12,
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                }}
-              />
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <label style={{ fontWeight: 600 }}>Job Title</label>
+              <input value={modalTitle} onChange={(e) => setModalTitle(e.target.value)} style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd", width: "100%" }} />
 
-              <label>Category</label>
-              <select
-                value={modalCategory}
-                onChange={(e) => setModalCategory(e.target.value)}
-                style={{
-                  padding: 12,
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                }}
-              >
-                <option>Technical</option>
-                <option>Non-Technical</option>
-              </select>
+              <label style={{ fontWeight: 600 }}>Labels (remove only)</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {Array.isArray(modalLabelsSelected) && modalLabelsSelected.length === 0 && <div style={{ color: "#6b7280" }}>No labels set</div>}
+                {modalLabelsSelected.map((lab) => (
+                  <div key={lab} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#f1f5f9", padding: "6px 10px", borderRadius: 999 }}>
+                    <span>{lab}</span>
+                    <button onClick={() => setModalLabelsSelected((prev) => prev.filter((p) => p !== lab))} style={{ border: "none", background: "#ef4444", color: "white", padding: "4px 8px", borderRadius: 999, cursor: "pointer" }}>
+                      x
+                    </button>
+                  </div>
+                ))}
+              </div>
 
-              <label>Description</label>
-              <textarea
-                value={modalDescription}
-                onChange={(e) => setModalDescription(e.target.value)}
-                style={{
-                  padding: 12,
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                  minHeight: 140,
-                }}
-              />
+              <label style={{ fontWeight: 600 }}>Description</label>
+              <textarea value={modalDescription} onChange={(e) => setModalDescription(e.target.value)} style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd", width: "100%", minHeight: 140 }} />
 
-              {/* ⭐ VALIDATION MESSAGE */}
-              {validationError && (
-                <div
-                  style={{
-                    color: "#dc2626",
-                    fontSize: "14px",
-                    marginTop: "-4px",
-                  }}
-                >
-                  {validationError}
-                </div>
-              )}
+              {validationError && <div style={{ color: "#dc2626" }}>{validationError}</div>}
 
-              <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
-                <button
-                  onClick={saveEditedTemplate}
-                  style={{
-                    flex: 1,
-                    padding: "12px 16px",
-                    borderRadius: 10,
-                    background: "#3b82f6",
-                    border: "none",
-                    color: "white",
-                    cursor: "pointer",
-                  }}
-                >
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={saveEditedTemplate} style={{ flex: 1, padding: 12, borderRadius: 8, background: "#3b82f6", color: "white", border: "none" }}>
                   Save
                 </button>
-
-                <button
-                  onClick={() => setShowEditModal(false)}
-                  style={{
-                    flex: 1,
-                    padding: "12px 16px",
-                    borderRadius: 10,
-                    background: "#94a3b8",
-                    border: "none",
-                    color: "white",
-                    cursor: "pointer",
-                  }}
-                >
+                <button onClick={() => setShowEditModal(false)} style={{ flex: 1, padding: 12, borderRadius: 8, background: "#94a3b8", color: "white", border: "none" }}>
                   Cancel
                 </button>
               </div>
@@ -574,9 +718,7 @@ export default function TemplatesPage() {
         </div>
       )}
 
-      {/* ============================ */}
-      {/* DELETE CONFIRMATION MODAL */}
-      {/* ============================ */}
+      {/* Delete Confirmation */}
       {showDeleteModal && (
         <div
           style={{
@@ -589,58 +731,62 @@ export default function TemplatesPage() {
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
-            zIndex: 300,
+            zIndex: 700,
           }}
+          onClick={() => setShowDeleteModal(false)}
         >
-          <div
-            style={{
-              width: "380px",
-              background: "white",
-              padding: "26px",
-              borderRadius: "16px",
-              boxShadow: "0 8px 22px rgba(0,0,0,0.15)",
-              textAlign: "center",
-            }}
-          >
-            <h3 style={{ marginBottom: 12 }}>Are you sure?</h3>
-            <p style={{ marginBottom: 22, color: "#555" }}>
-              Do you really want to delete this template?
-            </p>
-
+          <div onClick={(e) => e.stopPropagation()} style={{ width: 380, background: "white", padding: 22, borderRadius: 12, textAlign: "center", boxShadow: "0 12px 30px rgba(0,0,0,0.12)" }}>
+            <h3>Are you sure?</h3>
+            <p style={{ color: "#555" }}>Do you really want to delete this template?</p>
             <div style={{ display: "flex", gap: 12 }}>
-              <button
-                onClick={confirmDelete}
-                style={{
-                  flex: 1,
-                  padding: "10px",
-                  background: "#ef4444",
-                  borderRadius: "8px",
-                  color: "white",
-                  border: "none",
-                  cursor: "pointer",
-                  transition: "0.2s",
-                }}
-                onMouseEnter={(e) => (e.target.style.transform = "scale(1.05)")}
-                onMouseLeave={(e) => (e.target.style.transform = "scale(1)")}
-              >
+              <button onClick={confirmDelete} style={{ flex: 1, padding: 10, background: "#ef4444", color: "white", borderRadius: 10, border: "none" }}>
                 Delete
               </button>
+              <button onClick={() => setShowDeleteModal(false)} style={{ flex: 1, padding: 10, background: "#94a3b8", color: "white", borderRadius: 10, border: "none" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
+      {/* Add Label Modal */}
+      {showAddLabelModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100vw",
+            height: "100vh",
+            background: "rgba(0,0,0,0.15)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 900,
+          }}
+          onClick={() => setShowAddLabelModal(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: 420, background: "white", padding: 20, borderRadius: 12, boxShadow: "0 12px 30px rgba(0,0,0,0.12)" }}
+          >
+            <h3 style={{ marginBottom: 8 }}>Add Label</h3>
+            <input value={newLabelInput} onChange={(e) => setNewLabelInput(e.target.value)} placeholder="Label name (e.g. Backend)" style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ddd", marginBottom: 12 }} />
+            <div style={{ display: "flex", gap: 8 }}>
               <button
-                onClick={() => setShowDeleteModal(false)}
-                style={{
-                  flex: 1,
-                  padding: "10px",
-                  background: "#94a3b8",
-                  borderRadius: "8px",
-                  color: "white",
-                  border: "none",
-                  cursor: "pointer",
-                  transition: "0.2s",
+                onClick={() => {
+                  const ok = addLabel(newLabelInput);
+                  if (ok) {
+                    setNewLabelInput("");
+                    setShowAddLabelModal(false);
+                  } else setNewLabelInput((v) => v.trim());
                 }}
-                onMouseEnter={(e) => (e.target.style.transform = "scale(1.05)")}
-                onMouseLeave={(e) => (e.target.style.transform = "scale(1)")}
+                style={{ flex: 1, padding: 10, borderRadius: 8, background: "#10b981", color: "white", border: "none" }}
               >
+                Save
+              </button>
+              <button onClick={() => setShowAddLabelModal(false)} style={{ flex: 1, padding: 10, borderRadius: 8, background: "#94a3b8", color: "white", border: "none" }}>
                 Cancel
               </button>
             </div>
@@ -650,6 +796,25 @@ export default function TemplatesPage() {
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

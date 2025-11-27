@@ -33,10 +33,7 @@ export default function HomePage() {
 
   // 🚀 MAKE TEMPLATE BUTTON LOGIC
   const handleMakeTemplate = () => {
-    // Store only the description
     localStorage.setItem("makeTemplateDescription", description);
-
-    // Navigate to templates page
     router.push("/templates");
   };
 
@@ -79,13 +76,20 @@ export default function HomePage() {
           }}
         />
 
-        {/* BUTTONS */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          
-          {/* Templates Button (Red) */}
+        {/* BUTTONS SIDE BY SIDE */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "row",
+            gap: "12px",
+            marginTop: "8px",
+          }}
+        >
+          {/* Templates Button */}
           <button
             onClick={goToTemplates}
             style={{
+              flex: 1,
               padding: "10px",
               background: "#ef4444",
               color: "white",
@@ -100,13 +104,14 @@ export default function HomePage() {
             Templates
           </button>
 
-          {/* Make Template Button (Blue/Green) — Only if description exists */}
+          {/* Make Template Button */}
           {description.trim().length > 0 && (
             <button
               onClick={handleMakeTemplate}
               style={{
+                flex: 1,
                 padding: "10px",
-                background: "#3b82f6",  // Blue standout button
+                background: "#3b82f6",
                 color: "white",
                 borderRadius: "8px",
                 border: "none",
@@ -130,6 +135,7 @@ export default function HomePage() {
     </div>
   );
 }
+
 
 
 
