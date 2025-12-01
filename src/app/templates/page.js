@@ -498,7 +498,7 @@ export default function TemplatesPage() {
                       top: 40,
                       right: 0,
                       width: 160, // reduced width as requested
-                      maxHeight: 180,
+                      maxHeight: 110,
                       overflowY: "auto", // scrollbar
                       background: "white",
                       border: "1px solid #ddd",
@@ -796,6 +796,7 @@ export default function TemplatesPage() {
     </div>
   );
 }
+
 
 
 
