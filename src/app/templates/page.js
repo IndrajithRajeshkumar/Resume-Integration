@@ -29,32 +29,20 @@ export default function TemplatesPage() {
 
   const [validationError, setValidationError] = useState("");
 
-  // card-level label dropdown open state
   const [openCardLabelId, setOpenCardLabelId] = useState(null);
 
-  // refs for click outside closing
+  // ⭐ NEW — label deletion confirmation state
+  const [labelToDelete, setLabelToDelete] = useState(null);
+
   const labelsDropdownRef = useRef(null);
   const cardLabelRef = useRef(null);
 
-  // load persisted data
   useEffect(() => {
     const saved = localStorage.getItem("templates");
-    if (saved) {
-      try {
-        setTemplates(JSON.parse(saved));
-      } catch {
-        setTemplates([]);
-      }
-    }
+    if (saved) setTemplates(JSON.parse(saved) || []);
 
     const savedLabels = localStorage.getItem("labels");
-    if (savedLabels) {
-      try {
-        setLabels(JSON.parse(savedLabels));
-      } catch {
-        setLabels([]);
-      }
-    }
+    if (savedLabels) setLabels(JSON.parse(savedLabels) || []);
   }, []);
 
   const saveTemplatesToStorage = (updated) => {
@@ -67,11 +55,9 @@ export default function TemplatesPage() {
     setLabels(updated);
   };
 
-  // label helpers
   const addLabel = (labelName) => {
-    const trimmed = String(labelName || "").trim();
-    if (!trimmed) return false;
-    if (labels.includes(trimmed)) return false;
+    const trimmed = (labelName || "").trim();
+    if (!trimmed || labels.includes(trimmed)) return false;
     const updated = [trimmed, ...labels];
     saveLabelsToStorage(updated);
     return true;
@@ -81,7 +67,6 @@ export default function TemplatesPage() {
     const updated = labels.filter((l) => l !== labelName);
     saveLabelsToStorage(updated);
 
-    // remove from templates too
     const updatedTemplates = templates.map((t) =>
       Array.isArray(t.labels) && t.labels.includes(labelName)
         ? { ...t, labels: t.labels.filter((l) => l !== labelName) }
@@ -90,7 +75,6 @@ export default function TemplatesPage() {
     saveTemplatesToStorage(updatedTemplates);
   };
 
-  // template flows
   const openAddModal = () => {
     setModalId(null);
     setModalTitle("");
@@ -104,7 +88,7 @@ export default function TemplatesPage() {
     setModalId(t.id);
     setModalTitle(t.title || "");
     setModalDescription(t.description || "");
-    setModalLabelsSelected(Array.isArray(t.labels) ? [...t.labels] : []);
+    setModalLabelsSelected([...t.labels] || []);
     setValidationError("");
     setShowEditModal(true);
   };
@@ -114,7 +98,6 @@ export default function TemplatesPage() {
       setValidationError("⚠ Please fill all required fields.");
       return false;
     }
-    setValidationError("");
     return true;
   };
 
@@ -124,7 +107,7 @@ export default function TemplatesPage() {
       id: Date.now().toString(),
       title: modalTitle,
       description: modalDescription,
-      labels: modalLabelsSelected.length ? [...modalLabelsSelected] : [],
+      labels: [...modalLabelsSelected],
     };
     saveTemplatesToStorage([newTemplate, ...templates]);
     setShowAddModal(false);
@@ -149,7 +132,6 @@ export default function TemplatesPage() {
   const confirmDelete = () => {
     saveTemplatesToStorage(templates.filter((t) => t.id !== deleteId));
     setShowDeleteModal(false);
-    setDeleteId(null);
   };
 
   const useTemplate = (text) => {
@@ -157,96 +139,82 @@ export default function TemplatesPage() {
     router.push("/");
   };
 
-  // search + label filter
   const filtered = templates.filter((t) => {
-    const searchMatch =
-      (t.title || "").toLowerCase().includes(search.toLowerCase()) ||
-      (t.description || "").toLowerCase().includes(search.toLowerCase());
-    const labelMatch = filterLabel === "All" ? true : Array.isArray(t.labels) && t.labels.includes(filterLabel);
-    return searchMatch && labelMatch;
+    const s = search.toLowerCase();
+    const match =
+      t.title?.toLowerCase().includes(s) ||
+      t.description?.toLowerCase().includes(s);
+    const labelMatch = filterLabel === "All" || t.labels?.includes(filterLabel);
+    return match && labelMatch;
   });
 
-  // auto-open "make template" flow
   useEffect(() => {
-    const desc = localStorage.getItem("makeTemplateDescription");
-    if (desc) {
-      setModalId(null);
-      setModalTitle("");
-      setModalDescription(desc);
-      setModalLabelsSelected([]);
-      setValidationError("");
+    const d = localStorage.getItem("makeTemplateDescription");
+    if (d) {
+      setModalDescription(d);
       setShowAddModal(true);
       localStorage.removeItem("makeTemplateDescription");
     }
   }, []);
 
-  // card-level label dropdown
-  const toggleCardLabelDropdown = (cardId) => {
-    // when opening a card dropdown, close templates dropdown
+  const toggleCardLabelDropdown = (id) => {
     setShowLabelsDropdown(false);
-    setOpenCardLabelId((prev) => (prev === cardId ? null : cardId));
+    setOpenCardLabelId((prev) => (prev === id ? null : id));
   };
 
   const addLabelToCard = (cardId, labelName) => {
-    if (!labels.includes(labelName)) return;
     const updated = templates.map((t) =>
       t.id === cardId
         ? {
             ...t,
-            labels: Array.isArray(t.labels)
-              ? t.labels.includes(labelName)
-                ? t.labels
-                : [...t.labels, labelName]
-              : [labelName],
+            labels: t.labels?.includes(labelName)
+              ? t.labels
+              : [...(t.labels || []), labelName],
           }
         : t
     );
+
     saveTemplatesToStorage(updated);
     setOpenCardLabelId(null);
   };
 
-  const labelsAvailableForCard = (card) => {
-    const used = Array.isArray(card.labels) ? card.labels : [];
-    return labels.filter((l) => !used.includes(l));
-  };
+  const labelsAvailableForCard = (card) =>
+    labels.filter((l) => !card.labels?.includes(l));
 
-  // click outside to close dropdowns: central handler
   useEffect(() => {
-    const onDocClick = (e) => {
-      if (labelsDropdownRef.current && !labelsDropdownRef.current.contains(e.target)) {
+    const handler = (e) => {
+      if (labelsDropdownRef.current && !labelsDropdownRef.current.contains(e.target))
         setShowLabelsDropdown(false);
-      }
-      // cardLabelRef is shared but we only close card dropdown when clicking outside any open card dropdown
-      // so if click is not inside any element with data-role="card-label-area", close card dropdown
-      const cardArea = document.querySelector('[data-role="card-label-area"]');
-      if (openCardLabelId && !e.target.closest('[data-card-label-id]')) {
-        setOpenCardLabelId(null);
-      }
+
+      if (!e.target.closest("[data-card-label-id]")) setOpenCardLabelId(null);
     };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [openCardLabelId]);
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
-  // filtered labels for the templates dropdown search
-  const filteredLabels = labels
-    .filter((lab) => typeof lab === "string")
-    .filter((lab) => lab.toLowerCase().includes(labelSearch.toLowerCase()));
+  const filteredLabels = labels.filter((lab) =>
+    lab.toLowerCase().includes(labelSearch.toLowerCase())
+  );
 
-  // --- Component render ---
   return (
     <div style={{ padding: 28 }}>
       <h1 style={{ marginBottom: 20 }}>Templates</h1>
 
-      {/* top controls */}
+      {/* === TOP BAR === */}
       <div style={{ display: "flex", gap: 12, marginBottom: 20, alignItems: "center" }}>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search templates..."
-          style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd", width: 260 }}
+          style={{
+            padding: 10,
+            borderRadius: 8,
+            border: "1px solid #ddd",
+            width: 260,
+          }}
         />
 
-        {/* Labels dropdown (templates page) */}
+        {/* LABELS DROPDOWN */}
         <div style={{ position: "relative" }} ref={labelsDropdownRef}>
           <button
             onClick={() => {
@@ -278,7 +246,6 @@ export default function TemplatesPage() {
                 padding: 10,
                 zIndex: 300,
                 maxHeight: 320,
-                overflow: "hidden",
                 display: "flex",
                 flexDirection: "column",
                 gap: 8,
@@ -289,9 +256,15 @@ export default function TemplatesPage() {
                 value={labelSearch}
                 onChange={(e) => setLabelSearch(e.target.value)}
                 placeholder="Search labels..."
-                style={{ width: "100%", padding: 8, border: "1px solid #ddd", borderRadius: 8 }}
+                style={{
+                  width: "100%",
+                  padding: 8,
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                }}
               />
 
+              {/* ALL FILTER */}
               <div
                 onClick={() => {
                   setFilterLabel("All");
@@ -307,6 +280,7 @@ export default function TemplatesPage() {
                 All
               </div>
 
+              {/* LABEL LIST */}
               <div style={{ overflowY: "auto", maxHeight: 180, paddingRight: 4 }}>
                 {filteredLabels.map((lab) => (
                   <div
@@ -332,14 +306,11 @@ export default function TemplatesPage() {
                       {lab}
                     </div>
 
-                    {/* remove icon inside the templates dropdown (per your request) */}
+                    {/* ⭐ LABEL DELETE BUTTON → Opens modal */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        // confirm removal quickly
-                        if (confirm(`Remove label "${lab}" from store and all templates?`)) {
-                          removeLabelFromStore(lab);
-                        }
+                        setLabelToDelete(lab); // OPEN CUSTOM MODAL
                       }}
                       title="Remove label"
                       style={{
@@ -357,6 +328,7 @@ export default function TemplatesPage() {
                 ))}
               </div>
 
+              {/* ADD NEW LABEL BUTTON */}
               <button
                 onClick={() => {
                   setShowAddLabelModal(true);
@@ -365,8 +337,8 @@ export default function TemplatesPage() {
                 }}
                 style={{
                   width: "100%",
-                  marginTop: 6,
                   padding: 8,
+                  marginTop: 6,
                   borderRadius: 8,
                   border: "1px solid #ddd",
                   background: "white",
@@ -385,8 +357,8 @@ export default function TemplatesPage() {
             marginLeft: "auto",
             padding: "10px 16px",
             borderRadius: 8,
-            border: "none",
             background: "#10b981",
+            border: "none",
             color: "white",
             cursor: "pointer",
           }}
@@ -395,8 +367,14 @@ export default function TemplatesPage() {
         </button>
       </div>
 
-      {/* card grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", gap: 20 }}>
+      {/* === CARD GRID === */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))",
+          gap: 20,
+        }}
+      >
         {filtered.map((t) => (
           <div
             key={t.id}
@@ -406,7 +384,7 @@ export default function TemplatesPage() {
               borderRadius: 14,
               boxShadow: "0 6px 18px rgba(0,0,0,0.08)",
               position: "relative",
-              transition: "transform 0.18s ease, box-shadow 0.18s ease",
+              transition: "transform 0.18s, box-shadow 0.18s",
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.transform = "translateY(-3px)";
@@ -419,11 +397,12 @@ export default function TemplatesPage() {
             onClick={(e) => {
               const btn = e.target.dataset.btn;
               const role = e.target.dataset.role;
-              if (btn === "use" || btn === "delete" || role === "card-label" || role === "card-label-item") return;
+              if (btn === "use" || btn === "delete" || role === "card-label" || role === "card-label-item")
+                return;
               openEditModal(t);
             }}
           >
-            {/* label chips (top-right) */}
+            {/* LABEL CHIPS */}
             <div
               style={{
                 position: "absolute",
@@ -432,11 +411,10 @@ export default function TemplatesPage() {
                 display: "flex",
                 gap: 6,
                 flexWrap: "wrap",
-                // ensure chip area doesn't overlap title (adds spacing)
                 maxWidth: 200,
               }}
             >
-              {(Array.isArray(t.labels) ? t.labels : []).map((lab) => (
+              {(t.labels || []).map((lab) => (
                 <div
                   key={lab}
                   style={{
@@ -444,10 +422,9 @@ export default function TemplatesPage() {
                     padding: "4px 8px",
                     borderRadius: 999,
                     fontSize: 12,
-                    color: "#0f172a",
                     maxWidth: 120,
-                    whiteSpace: "nowrap",
                     overflow: "hidden",
+                    whiteSpace: "nowrap",
                     textOverflow: "ellipsis",
                   }}
                   title={lab}
@@ -457,59 +434,52 @@ export default function TemplatesPage() {
               ))}
             </div>
 
-            {/* spacing to avoid overlap with title */}
-            <div style={{ height: (t.labels?.length || 0) > 0 ? 34 : 6 }} />
+            <div style={{ height: t.labels?.length ? 34 : 6 }} />
 
-            {/* title + small + button */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div style={{ fontWeight: 700, fontSize: 16 }}>{t.title || "Untitled"}</div>
+            {/* TITLE + + BUTTON */}
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <strong>{t.title}</strong>
 
-              {/* card label area - note data attributes used by document click handler */}
-              <div data-card-label-id={t.id} style={{ position: "relative" }} data-role="card-label-area" ref={cardLabelRef}>
+              <div data-card-label-id={t.id} style={{ position: "relative" }} ref={cardLabelRef}>
                 <button
                   data-role="card-label"
                   onClick={(ev) => {
                     ev.stopPropagation();
                     toggleCardLabelDropdown(t.id);
                   }}
-                  title="Add label"
                   style={{
                     width: 32,
                     height: 32,
                     borderRadius: 8,
                     border: "1px solid #ddd",
                     background: "white",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
                     cursor: "pointer",
                     fontSize: 18,
-                    color: "#374151",
                   }}
                 >
                   +
                 </button>
 
-                {/* small dropdown for card labels (reduced size + scrollbar) */}
+                {/* SMALLER DROPDOWN WITH SCROLL */}
                 {openCardLabelId === t.id && (
                   <div
                     style={{
                       position: "absolute",
                       top: 40,
                       right: 0,
-                      width: 160, // reduced width as requested
+                      width: 150,
                       maxHeight: 110,
-                      overflowY: "auto", // scrollbar
+                      overflowY: "auto",
                       background: "white",
                       border: "1px solid #ddd",
                       borderRadius: 10,
                       padding: 8,
                       boxShadow: "0 8px 20px rgba(0,0,0,0.12)",
-                      zIndex: 400,
+                      zIndex: 999,
                     }}
                     onClick={(ev) => ev.stopPropagation()}
                   >
-                    <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>Add label</div>
+                    <div style={{ fontWeight: 600, marginBottom: 8 }}>Add label</div>
 
                     {labelsAvailableForCard(t).length > 0 ? (
                       labelsAvailableForCard(t).map((lab) => (
@@ -519,32 +489,30 @@ export default function TemplatesPage() {
                           onClick={() => addLabelToCard(t.id, lab)}
                           style={{
                             padding: "6px 8px",
-                            borderRadius: 6,
                             cursor: "pointer",
-                            fontSize: 14,
+                            borderRadius: 6,
                           }}
                         >
                           {lab}
                         </div>
                       ))
                     ) : (
-                      <div style={{ color: "#6b7280", padding: 6 }}>No labels available</div>
+                      <div style={{ padding: 6, color: "#999" }}>No labels</div>
                     )}
 
-                    <div style={{ height: 6 }} />
                     <button
                       onClick={() => {
                         setShowAddLabelModal(true);
                         setOpenCardLabelId(null);
-                        setNewLabelInput("");
                       }}
                       style={{
                         width: "100%",
-                        padding: 8,
-                        borderRadius: 8,
+                        marginTop: 6,
+                        padding: 6,
+                        borderRadius: 6,
                         border: "1px solid #ddd",
-                        background: "white",
                         cursor: "pointer",
+                        background: "white",
                       }}
                     >
                       + Add label
@@ -554,27 +522,24 @@ export default function TemplatesPage() {
               </div>
             </div>
 
-            {/* description */}
-            <div style={{ marginTop: 10, maxHeight: 64, overflow: "hidden", color: "#374151", fontSize: 14 }}>
-              {t.description || ""}
-            </div>
+            {/* DESCRIPTION */}
+            <p style={{ marginTop: 10, maxHeight: 70, overflow: "hidden" }}>{t.description}</p>
 
-            {/* actions */}
-            <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+            {/* BUTTONS */}
+            <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
               <button
                 data-btn="use"
                 onClick={(ev) => {
                   ev.stopPropagation();
-                  useTemplate(t.description || "");
+                  useTemplate(t.description);
                 }}
                 style={{
                   flex: 1,
-                  padding: "9px 12px",
+                  padding: 10,
                   borderRadius: 10,
-                  border: "none",
                   background: "#6b46c1",
+                  border: "none",
                   color: "white",
-                  cursor: "pointer",
                 }}
               >
                 Use
@@ -588,12 +553,11 @@ export default function TemplatesPage() {
                 }}
                 style={{
                   flex: 1,
-                  padding: "9px 12px",
+                  padding: 10,
                   borderRadius: 10,
-                  border: "none",
                   background: "#ef4444",
+                  border: "none",
                   color: "white",
-                  cursor: "pointer",
                 }}
               >
                 Delete
@@ -603,146 +567,36 @@ export default function TemplatesPage() {
         ))}
       </div>
 
-      {/* Add Template Modal */}
+      {/* ===================== ADD TEMPLATE MODAL ===================== */}
       {showAddModal && (
         <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100vw",
-            height: "100vh",
-            background: "rgba(0,0,0,0.15)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 600,
-          }}
+          style={modalOverlay}
           onClick={() => setShowAddModal(false)}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: 520,
-              background: "white",
-              padding: 24,
-              borderRadius: 12,
-              boxShadow: "0 10px 30px rgba(0,0,0,0.12)",
-            }}
-          >
-            <h2 style={{ textAlign: "center", marginBottom: 12 }}>Add Template</h2>
+          <div style={modalContainer} onClick={(e) => e.stopPropagation()}>
+            <h2 style={modalTitleStyle}>Add Template</h2>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <label style={{ fontWeight: 600 }}>Job Title</label>
-              <input value={modalTitle} onChange={(e) => setModalTitle(e.target.value)} style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd", width: "100%" }} />
+            <label>Job Title</label>
+            <input
+              value={modalTitle}
+              onChange={(e) => setModalTitle(e.target.value)}
+              style={inputStyle}
+            />
 
-              <label style={{ fontWeight: 600 }}>Description</label>
-              <textarea value={modalDescription} onChange={(e) => setModalDescription(e.target.value)} style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd", width: "100%", minHeight: 140 }} />
+            <label>Description</label>
+            <textarea
+              value={modalDescription}
+              onChange={(e) => setModalDescription(e.target.value)}
+              style={textareaStyle}
+            />
 
-              {validationError && <div style={{ color: "#dc2626" }}>{validationError}</div>}
+            {validationError && <p style={{ color: "red" }}>{validationError}</p>}
 
-              <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={saveNewTemplate} style={{ flex: 1, padding: 12, borderRadius: 8, background: "#10b981", color: "white", border: "none" }}>
-                  Save
-                </button>
-                <button onClick={() => setShowAddModal(false)} style={{ flex: 1, padding: 12, borderRadius: 8, background: "#94a3b8", color: "white", border: "none" }}>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Template Modal */}
-      {showEditModal && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100vw",
-            height: "100vh",
-            background: "rgba(0,0,0,0.15)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 600,
-          }}
-          onClick={() => setShowEditModal(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: 520,
-              background: "white",
-              padding: 24,
-              borderRadius: 12,
-              boxShadow: "0 10px 30px rgba(0,0,0,0.12)",
-            }}
-          >
-            <h2 style={{ textAlign: "center", marginBottom: 12 }}>Edit Template</h2>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <label style={{ fontWeight: 600 }}>Job Title</label>
-              <input value={modalTitle} onChange={(e) => setModalTitle(e.target.value)} style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd", width: "100%" }} />
-
-              <label style={{ fontWeight: 600 }}>Labels (remove only)</label>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {Array.isArray(modalLabelsSelected) && modalLabelsSelected.length === 0 && <div style={{ color: "#6b7280" }}>No labels set</div>}
-                {modalLabelsSelected.map((lab) => (
-                  <div key={lab} style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#f1f5f9", padding: "6px 10px", borderRadius: 999 }}>
-                    <span>{lab}</span>
-                    <button onClick={() => setModalLabelsSelected((prev) => prev.filter((p) => p !== lab))} style={{ border: "none", background: "#ef4444", color: "white", padding: "4px 8px", borderRadius: 999, cursor: "pointer" }}>
-                      x
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <label style={{ fontWeight: 600 }}>Description</label>
-              <textarea value={modalDescription} onChange={(e) => setModalDescription(e.target.value)} style={{ padding: 10, borderRadius: 8, border: "1px solid #ddd", width: "100%", minHeight: 140 }} />
-
-              {validationError && <div style={{ color: "#dc2626" }}>{validationError}</div>}
-
-              <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={saveEditedTemplate} style={{ flex: 1, padding: 12, borderRadius: 8, background: "#3b82f6", color: "white", border: "none" }}>
-                  Save
-                </button>
-                <button onClick={() => setShowEditModal(false)} style={{ flex: 1, padding: 12, borderRadius: 8, background: "#94a3b8", color: "white", border: "none" }}>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Confirmation */}
-      {showDeleteModal && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100vw",
-            height: "100vh",
-            background: "rgba(0,0,0,0.15)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 700,
-          }}
-          onClick={() => setShowDeleteModal(false)}
-        >
-          <div onClick={(e) => e.stopPropagation()} style={{ width: 380, background: "white", padding: 22, borderRadius: 12, textAlign: "center", boxShadow: "0 12px 30px rgba(0,0,0,0.12)" }}>
-            <h3>Are you sure?</h3>
-            <p style={{ color: "#555" }}>Do you really want to delete this template?</p>
-            <div style={{ display: "flex", gap: 12 }}>
-              <button onClick={confirmDelete} style={{ flex: 1, padding: 10, background: "#ef4444", color: "white", borderRadius: 10, border: "none" }}>
-                Delete
+            <div style={modalButtonRow}>
+              <button style={saveBtn} onClick={saveNewTemplate}>
+                Save
               </button>
-              <button onClick={() => setShowDeleteModal(false)} style={{ flex: 1, padding: 10, background: "#94a3b8", color: "white", borderRadius: 10, border: "none" }}>
+              <button style={cancelBtn} onClick={() => setShowAddModal(false)}>
                 Cancel
               </button>
             </div>
@@ -750,43 +604,152 @@ export default function TemplatesPage() {
         </div>
       )}
 
-      {/* Add Label Modal */}
+      {/* ===================== EDIT TEMPLATE MODAL ===================== */}
+      {showEditModal && (
+        <div
+          style={modalOverlay}
+          onClick={() => setShowEditModal(false)}
+        >
+          <div style={modalContainer} onClick={(e) => e.stopPropagation()}>
+            <h2 style={modalTitleStyle}>Edit Template</h2>
+
+            <label>Job Title</label>
+            <input
+              value={modalTitle}
+              onChange={(e) => setModalTitle(e.target.value)}
+              style={inputStyle}
+            />
+
+            <label>Labels (remove only)</label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {modalLabelsSelected.map((lab) => (
+                <div
+                  key={lab}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    background: "#f1f5f9",
+                    padding: "6px 10px",
+                    borderRadius: 999,
+                  }}
+                >
+                  {lab}
+                  <button
+                    onClick={() => setModalLabelsSelected((prev) => prev.filter((p) => p !== lab))}
+                    style={{
+                      background: "#ef4444",
+                      padding: "4px 8px",
+                      border: "none",
+                      borderRadius: 999,
+                      color: "white",
+                      cursor: "pointer",
+                    }}
+                  >
+                    x
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <label>Description</label>
+            <textarea
+              value={modalDescription}
+              onChange={(e) => setModalDescription(e.target.value)}
+              style={textareaStyle}
+            />
+
+            {validationError && <p style={{ color: "red" }}>{validationError}</p>}
+
+            <div style={modalButtonRow}>
+              <button style={saveBtn} onClick={saveEditedTemplate}>
+                Save
+              </button>
+              <button style={cancelBtn} onClick={() => setShowEditModal(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== DELETE TEMPLATE CONFIRM ===================== */}
+      {showDeleteModal && (
+        <div
+          style={modalOverlay}
+          onClick={() => setShowDeleteModal(false)}
+        >
+          <div style={deleteModalContainer} onClick={(e) => e.stopPropagation()}>
+            <h3>Are you sure?</h3>
+            <p>Do you really want to delete this template?</p>
+
+            <div style={modalButtonRow}>
+              <button style={deleteBtn} onClick={confirmDelete}>
+                Delete
+              </button>
+              <button style={cancelBtn} onClick={() => setShowDeleteModal(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ⭐ NEW — DELETE LABEL CONFIRM MODAL */}
+      {labelToDelete && (
+        <div style={modalOverlay} onClick={() => setLabelToDelete(null)}>
+          <div style={deleteModalContainer} onClick={(e) => e.stopPropagation()}>
+            <h3>Delete Label?</h3>
+            <p>Are you sure you want to delete label "{labelToDelete}" everywhere?</p>
+
+            <div style={modalButtonRow}>
+              <button
+                style={deleteBtn}
+                onClick={() => {
+                  removeLabelFromStore(labelToDelete);
+                  setLabelToDelete(null);
+                }}
+              >
+                Delete
+              </button>
+
+              <button style={cancelBtn} onClick={() => setLabelToDelete(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADD LABEL MODAL */}
       {showAddLabelModal && (
         <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            width: "100vw",
-            height: "100vh",
-            background: "rgba(0,0,0,0.15)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 900,
-          }}
+          style={modalOverlay}
           onClick={() => setShowAddLabelModal(false)}
         >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: 420, background: "white", padding: 20, borderRadius: 12, boxShadow: "0 12px 30px rgba(0,0,0,0.12)" }}
-          >
-            <h3 style={{ marginBottom: 8 }}>Add Label</h3>
-            <input value={newLabelInput} onChange={(e) => setNewLabelInput(e.target.value)} placeholder="Label name (e.g. Backend)" style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #ddd", marginBottom: 12 }} />
-            <div style={{ display: "flex", gap: 8 }}>
+          <div style={modalContainer} onClick={(e) => e.stopPropagation()}>
+            <h3>Add Label</h3>
+
+            <input
+              value={newLabelInput}
+              onChange={(e) => setNewLabelInput(e.target.value)}
+              placeholder="Label name..."
+              style={inputStyle}
+            />
+
+            <div style={modalButtonRow}>
               <button
+                style={saveBtn}
                 onClick={() => {
-                  const ok = addLabel(newLabelInput);
-                  if (ok) {
-                    setNewLabelInput("");
+                  if (addLabel(newLabelInput)) {
                     setShowAddLabelModal(false);
-                  } else setNewLabelInput((v) => v.trim());
+                    setNewLabelInput("");
+                  }
                 }}
-                style={{ flex: 1, padding: 10, borderRadius: 8, background: "#10b981", color: "white", border: "none" }}
               >
                 Save
               </button>
-              <button onClick={() => setShowAddLabelModal(false)} style={{ flex: 1, padding: 10, borderRadius: 8, background: "#94a3b8", color: "white", border: "none" }}>
+              <button style={cancelBtn} onClick={() => setShowAddLabelModal(false)}>
                 Cancel
               </button>
             </div>
@@ -797,35 +760,91 @@ export default function TemplatesPage() {
   );
 }
 
+/* === SHARED MODAL STYLES === */
 
+const modalOverlay = {
+  position: "fixed",
+  top: 0,
+  left: 0,
+  width: "100vw",
+  height: "100vh",
+  background: "rgba(0,0,0,0.15)",
+  display: "flex",
+  justifyContent: "center",
+  alignItems: "center",
+  zIndex: 900,
+};
 
+const modalContainer = {
+  width: 520,
+  background: "white",
+  padding: 24,
+  borderRadius: 12,
+  boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
+};
 
+const deleteModalContainer = {
+  width: 380,
+  background: "white",
+  padding: 22,
+  borderRadius: 12,
+  textAlign: "center",
+  boxShadow: "0 12px 30px rgba(0,0,0,0.12)",
+};
 
+const inputStyle = {
+  padding: 10,
+  width: "100%",
+  borderRadius: 8,
+  border: "1px solid #ddd",
+  marginBottom: 12,
+};
 
+const textareaStyle = {
+  padding: 10,
+  width: "100%",
+  borderRadius: 8,
+  border: "1px solid #ddd",
+  minHeight: 140,
+};
 
+const modalTitleStyle = {
+  textAlign: "center",
+  marginBottom: 12,
+};
 
+const modalButtonRow = {
+  display: "flex",
+  gap: 12,
+  marginTop: 12,
+};
 
+const saveBtn = {
+  flex: 1,
+  padding: 12,
+  background: "#10b981",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+};
 
+const cancelBtn = {
+  flex: 1,
+  padding: 12,
+  background: "#94a3b8",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+};
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+const deleteBtn = {
+  flex: 1,
+  padding: 12,
+  background: "#ef4444",
+  color: "white",
+  border: "none",
+  borderRadius: 8,
+  cursor: "pointer",
+};
