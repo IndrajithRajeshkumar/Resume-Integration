@@ -479,7 +479,7 @@ export default function TemplatesPage() {
                     }}
                     onClick={(ev) => ev.stopPropagation()}
                   >
-                    <div style={{ fontWeight: 600, marginBottom: 8 }}>Add label</div>
+                    <div style={{ fontWeight: 510, marginBottom: 8 }}>Labels</div>
 
                     {labelsAvailableForCard(t).length > 0 ? (
                       labelsAvailableForCard(t).map((lab) => (
@@ -848,3 +848,4 @@ const deleteBtn = {
   borderRadius: 8,
   cursor: "pointer",
 };
+
